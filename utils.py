@@ -12,6 +12,10 @@ import pygame
 
 import matplotlib.pyplot as plt
 
+from maxent_highway import N_LANE
+
+N_LANE = 3
+
 pygame.init()
 fpsClock = pygame.time.Clock()
 display = pygame.display.set_mode((150, 600))
@@ -49,33 +53,93 @@ def generate_trajectories(env, n_traj):
     return np.array(trajectories)
 
 # this implementation goes by observation [[EGO][OTHER]]
+# def feature_func(state):
+# # f_distance: Distance from the other vehicle
+#     f_distance, f_velocity, f_sameLane, f_heading, f_collision = 0
+#     obs_ego = state[0]
+#     obs_other = state[1]
+#     if np.all((obs_other == 0)) == False:
+#         if obs_other[1] == 0:
+#             # Dealing with the same lane
+#             f_distance = obs_other[0]
+
+#             f_sameLane = 1
+            
+#             if f_distance < 0.03:
+#                 f_collision = 1
+#         elif obs_other[1] < 0.33 or obs_other[1] > -0.33:
+#             f_distance = obs_other[0]
+
+#     # f_heading: Feature to penlize switching lanes (so that vehicle moves in stright line)
+#     # A boolean indicating swtiching lanes
+#     if obs_ego[4] != 0:
+#         f_heading = 1
+
+#     # f_maxS: Feature to reward higher speed 
+#     f_velocity = obs_ego[2]
+
+#     feature_vector = np.array([f_distance, f_velocity, f_heading, f_sameLane, f_collision])
+#     return feature_vector/max(feature_vector)
+
+
 def feature_func(state):
 # f_distance: Distance from the other vehicle
-    f_distance, f_velocity, f_sameLane, f_heading, f_collision = 0
+# f_distance_sameL, f_dist_L, f_dist_Laneabove
+    def get_vehicle_lane(ego_state):
+        bins = np.linspace(0, 1.0, N_LANE)
+        return np.digitize(ego_state[1], bins)
+
+
+    f_velocity, f_heading, f_collision = 0.0, 0, 0
+    f_sameLane_ahead, f_sameLane_behind, f_laneAbove_ahead, f_laneAbove_behind, f_laneBelow_ahead, f_laneBelow_behind = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     obs_ego = state[0]
-    obs_other = state[1]
-    if np.all((obs_other == 0)) == False:
-        if obs_other[1] == 0:
-            # Dealing with the same lane
-            f_distance = obs_other[0]
+    obs_other = state[1:]
+    lane_offset = 1/N_LANE
 
-            f_sameLane = 1
-            
-            if f_distance < 0.03:
-                f_collision = 1
-        elif obs_other[1] < 0.33 or obs_other[1] > -0.33:
-            f_distance = obs_other[0]
+    invalid_obs = np.all((obs_other == 0)) 
+    
+    if invalid_obs == False:
 
+        lane_info = obs_other[:,1]
+
+        same_lane = obs_other[np.where(np.around(lane_info, decimals=1) == 0.0)]
+        x_info = same_lane[:,0]
+
+        sameLane_ahead = x_info[np.where(x_info >= 0.0)]
+        f_sameLane_ahead = sameLane_ahead[0] if sameLane_ahead.size != 0 else 0.0
+
+        sameLane_behind = x_info[np.where(x_info <= 0.0)]
+        f_sameLane_behind = abs(sameLane_behind[0]) if sameLane_behind.size != 0 else 0.0
+
+        lane_below = obs_other[np.where(np.around(lane_offset - lane_info, decimals=1) == 0.0)]
+        x_info = lane_below[:,0]
+
+        laneBelow_ahead = x_info[np.where(x_info >= 0.0)]
+        f_laneBelow_ahead = laneBelow_ahead[0] if laneBelow_ahead.size != 0 else 0.0
+
+        laneBelow_behind = x_info[np.where(x_info <= 0.0)]
+        f_laneBelow_behind = abs(laneBelow_behind[0]) if laneBelow_behind.size != 0 else 0.0
+
+        lane_above = obs_other[np.where(np.around(lane_offset - lane_info, decimals=1) == np.around(lane_offset*2, decimals=1))]
+        x_info = lane_above[:,0]
+
+        laneAbove_ahead = x_info[np.where(x_info >= 0.0)]
+        f_laneAbove_ahead = laneAbove_ahead[0] if laneAbove_ahead.size != 0 else 0.0
+
+        laneAbove_behind = x_info[np.where(x_info <= 0.0)]
+        f_laneAbove_behind = abs(laneAbove_behind[0]) if laneAbove_behind.size != 0 else 0.0
     # f_heading: Feature to penlize switching lanes (so that vehicle moves in stright line)
     # A boolean indicating swtiching lanes
     if obs_ego[4] != 0:
         f_heading = 1
 
-    # f_maxS: Feature to reward higher speed 
+    # f_velocity: Feature to reward higher speed 
+    v_max = 0.4
     f_velocity = obs_ego[2]
 
-    feature_vector = np.array([f_distance, f_velocity, f_heading, f_sameLane, f_collision])
-    return feature_vector/max(feature_vector)
+    feature_vector = np.array([f_sameLane_ahead, f_sameLane_behind, f_laneAbove_ahead, f_laneAbove_behind, f_laneBelow_ahead, f_laneBelow_behind, f_velocity, f_heading, f_collision])
+    # normalized_feat = (feature_vector-np.min(feature_vector))/(np.max(feature_vector)-np.min(feature_vector))
+    return feature_vector
 
 
 def create_bins(nbins): 
@@ -119,12 +183,12 @@ def record_trajectories(env, max_timesteps):
         observation_tuple.append(obs[0].tolist())
         observation_tuple.append(obs[1].tolist())
         feature_matrix = []
-        trajectory.append((np.around(obs, decimals=2), action))
-        # trajectory.append((obs, action))
+        # trajectory.append((np.around(obs, decimals=2), action))
+        trajectory.append((obs, action))
         timeStep += 1
     observation_tuple.append(obs[0].tolist())
     observation_tuple.append(obs[1].tolist())
-    trajectory.append((np.around(obs, decimals=2), None))
+    trajectory.append((obs, None))
     return np.array(trajectory)
 
 
@@ -176,13 +240,19 @@ def get_reward_plot(reward):
     
     x = np.arange(0, 12, 1, dtype=int)
 
-    plt.plot(list(x), list(reward[0]), color = "r", label = "Trajectory 1")
-    plt.plot(list(x), list(reward[1]), color = "g", label = "Trajectory 2")
-    plt.plot(list(x), list(reward[2]), color = "b", label = "Trajectory 3")
+    label1 = "Trajectory Reward: "+ str(np.around(np.sum(reward[0]),decimals=2))
+    label2 = "Trajectory Reward: "+ str(np.around(np.sum(reward[1]),decimals=2))
+    label3 = "Trajectory Reward: "+ str(np.around(np.sum(reward[2]),decimals=2))
+
+    plt.plot(list(x), list(reward[0]), color = "b", label = label1)
+    # plt.plot(list(x), list(reward[1]), color = "g", label = label2)
+    # plt.plot(list(x), list(reward[2]), color = "m", label = label3)
 
     plt.xlabel("Timesteps")
     plt.ylabel("Reward R(s)")
-
+    # plt.title(label1+label2)
+    
+    plt.legend(loc='best')
     plt.show()
 
 

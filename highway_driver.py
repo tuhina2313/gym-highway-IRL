@@ -1,3 +1,4 @@
+from unicodedata import decimal
 import numpy as np
 import gym
 import random
@@ -12,19 +13,30 @@ from scipy.spatial.distance import euclidean
 
 GAMMA = 0.9
 
+class RewardWrapper(gym.RewardWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+    
+    def reward(self, rew):
+        observe = self.observation_type.observe()
+        ground_theta = [2.0, 0.0,  1.0, 0.0, 0.0, 0.03, 5.0, -3.0, -10.0]
+        feat = utils.feature_func(observe)
+        rew = np.dot(feat, ground_theta)
+        return rew
+        
+
 def main():
    discount = GAMMA
    epochs = 200
    learning_rate = 0.01
-   num_features = 6
-   n_traj = 10
+   num_features = 9
+   n_traj = 100
    trajectories = []
-   max_timesteps = 10
-   # env = ObservationWrapper(gym.make("highway-v0"))
+   # env = RewardWrapper(gym.make("highway-v0"))
    env = gym.make("highway-v0")
 
-   np.random.seed(55)
-   env.seed(55)
+   np.random.seed(50)
+   env.seed(50)
    action_space = {
         0: 'LANE_LEFT',
         1: 'IDLE',
@@ -42,51 +54,68 @@ def main():
         "absolute": False,
         "lanes_count": 3,
         "show_trajectories": True,
-        "manual_control": True,
-        "real_time_rendering": True,
-        "vehicles_count": 1,
+        "manual_control": False,
+        "real_time_rendering": False,
+        "vehicles_count": 5,
         "screen_height": 150,
         "screen_width": 600,
+        "order": sorted,
     }
    env.configure(config)
    env.reset() 
-   # trajectory = utils.record_trajectories(env, max_timesteps)
-   # np.savetxt("demo_traj.txt", trajectory, fmt='%s')
-   # highway_dqn.train_dqn(env)
-   # highway_dqn.test_model(env)
 
-   ############## RECORDING TRAJECTORIES ###################################
+######################### TRAINING DQN ######################################
+
+
+   # highway_dqn.train_dqn(env, filename = "highway_dqn/Vanilla_dqn")
+   # highway_dqn.test_model(env, filename = "highway_dqn/Vanilla_dqn", max_timesteps= 15)
+   # print("DQN Trained")
+
+######################### RECORDING DQN TRAJECTORIES ######################################
+
+   for i in range(n_traj):
+       env.seed(50)
+       env.reset()
+       trajectory = highway_dqn.record_trajectories(env, model_file= "highway_dqn/Vanilla_dqn", max_timesteps = 15)
+       trajectories.append(trajectory)
+   print("Recorded Trajectories")
+######################### SAVING DQN TRAJECTORIES ######################################
+   utils.save_trajectories(trajectories, filename="newData/Expert_vanilla.pickle")
+
+   t_ground = utils.load_trajectories("newData/Expert_vanilla.pickle")
+   print("Loaded Trajectories")
+
+
+
+   # trajectory = utils.record_trajectories(env, max_timesteps = 15)
+#    print(trajectory)
+   # np.savetxt("demo_traj.txt", trajectory, fmt='%s')
+
+   ############# RECORDING TRAJECTORIES ###################################
 #    for i in range(n_traj):
-#        env.seed(55)
+#        env.seed(50)
 #        env.reset()
 #        trajectory = utils.record_trajectories(env, max_timesteps)
 #        trajectories.append(trajectory)
 
-# #    np.savetxt("trajs.txt", trajectories, fmt='%s')
-#    utils.save_trajectories(trajectories, filename="same_lane_speeding.pickle")
+   # buffer = []
+   # for _ in range(100):
+   #     trajectories.append(trajectory)
 
-   t = utils.load_trajectories("same_lane_speeding.pickle")
+#    utils.save_trajectories(trajectories, filename="newData/Expert.pickle")
+
+# #    t_crash = utils.load_trajectories("crash.pickle")
+#    t_ground = utils.load_trajectories("newData/Expert.pickle")
 
    feature_vector = np.zeros((num_features))
    # deep_irl.irl(env, t, feature_vector , action_space, epochs, discount, learning_rate)
-   theta = maxent_highway.irl(env, t, feature_vector , action_space, epochs, discount, learning_rate)
+   theta, expert_feat = maxent_highway.irl(env, t_ground, feature_vector , action_space, epochs, discount, learning_rate)
    print(theta)
-
-####################### ANALYSING REWARDS #################################
-   theta = [0.66018253, -87.48911503, -44.98564138, -389.32662012, 42.51299763, 22.98094568]
-   reward = []
-   for traj in t:
-    r = []
-    for state in traj:
-        feat = maxent_highway.feature_func(state[0])
-        r.append(np.dot(feat, theta))
-    reward.append(r)
-
-   utils.get_reward_plot(reward)
-
-#    env.reset()
-#    obs, reward, done, _ = env.step(env.action_type.actions_indexes["IDLE"])
-#    print(reward)
+   # theta_n = (theta-np.min(theta))/(np.max(theta)-np.min(theta))
+   theta_nor = theta / np.sqrt(np.sum(theta**2))
+   print(theta_nor)
+   exp_theta = expert_feat / np.sqrt(np.sum(expert_feat**2))
+   print(np.around(exp_theta, decimals = 2))
 
 if __name__ == "__main__":
     main()

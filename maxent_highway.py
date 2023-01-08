@@ -3,7 +3,6 @@ from time import time
 from matplotlib.pyplot import axes
 import numpy as np
 # import ValueIteration
-import tf_utils
 # from utils import eucledian_distance
 import math
 import gym
@@ -12,10 +11,8 @@ from stable_baselines3 import DQN
 
 N_LANE = 3
 
-def eucledian_distance(pair):
-    v1 = pair[0][0]
-    v2 = pair[0][1]
-    dist = ((v1 - v2) ** 2 + (v1 - v2) ** 2)
+def eucledian_distance(p1, p2):
+    dist = ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
     return dist
 
 def feature_func(state):
@@ -26,70 +23,67 @@ def feature_func(state):
         return np.digitize(ego_state[1], bins)
 
 
-    f_sameLane, f_laneAbove, f_laneBelow, f_velocity, f_heading, f_collision = 0.0, 0.0, 0.0, 0.0, 0.0, 0
+    f_velocity, f_heading, f_collision = 0.0, 0, 0
+    f_sameLane_ahead, f_sameLane_behind, f_laneAbove_ahead, f_laneAbove_behind, f_laneBelow_ahead, f_laneBelow_behind = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     obs_ego = state[0]
-    obs_other = state[1]
+    obs_other = state[1:]
     lane_offset = 1/N_LANE
 
-    ego_lane = get_vehicle_lane(obs_ego)
     invalid_obs = np.all((obs_other == 0)) 
     
     if invalid_obs == False:
-        if np.around(obs_other[1], decimals=1) == 0.0:
-            # Dealing with the same lane
-            f_sameLane = obs_other[0]
-            
-            if f_sameLane < 0.03:
-                f_collision = 1
-        elif obs_other[1] < 0.0 and abs(obs_other[1]) - lane_offset < 0.01 and obs_other[0] > 0:
-            f_laneAbove = math.sqrt(obs_other[0]**2 + obs_other[1]**2)
-        elif obs_other[1] > 0.0 and abs(obs_other[1]) - lane_offset < 0.01 and obs_other[0] > 0:
-            f_laneBelow = math.sqrt(obs_other[0]**2 + obs_other[1]**2)
 
+        lane_info = obs_other[:,1]
+
+        same_lane = obs_other[np.where(np.around(lane_info, decimals=1) == 0.0)]
+        x_info = same_lane[:,0]
+
+        sameLane_ahead = x_info[np.where(x_info >= 0.0)]
+        f_sameLane_ahead = sameLane_ahead[0] if sameLane_ahead.size != 0 else 0.0
+
+        sameLane_behind = x_info[np.where(x_info <= 0.0)]
+        f_sameLane_behind = abs(sameLane_behind[0]) if sameLane_behind.size != 0 else 0.0
+
+        lane_below = obs_other[np.where(np.around(lane_offset - lane_info, decimals=1) == 0.0)]
+        x_info = lane_below[:,0]
+
+        laneBelow_ahead = x_info[np.where(x_info >= 0.0)]
+        f_laneBelow_ahead = laneBelow_ahead[0] if laneBelow_ahead.size != 0 else 0.0
+
+        laneBelow_behind = x_info[np.where(x_info <= 0.0)]
+        f_laneBelow_behind = abs(laneBelow_behind[0]) if laneBelow_behind.size != 0 else 0.0
+
+        lane_above = obs_other[np.where(np.around(lane_offset - lane_info, decimals=1) == np.around(lane_offset*2, decimals=1))]
+        x_info = lane_above[:,0]
+
+        laneAbove_ahead = x_info[np.where(x_info >= 0.0)]
+        f_laneAbove_ahead = laneAbove_ahead[0] if laneAbove_ahead.size != 0 else 0.0
+
+        laneAbove_behind = x_info[np.where(x_info <= 0.0)]
+        f_laneAbove_behind = abs(laneAbove_behind[0]) if laneAbove_behind.size != 0 else 0.0
     # f_heading: Feature to penlize switching lanes (so that vehicle moves in stright line)
     # A boolean indicating swtiching lanes
     if obs_ego[4] != 0:
         f_heading = 1
 
-    # f_maxS: Feature to reward higher speed 
+    # f_velocity: Feature to reward higher speed 
+    v_max = 0.4
     f_velocity = obs_ego[2]
 
-    feature_vector = np.array([f_sameLane, f_laneAbove, f_laneBelow, f_velocity, f_heading, f_collision])
-    
+    # Distance vector to keep track of collision
+    distance = np.zeros(len(obs_other))
+    itr = 0
+    for obs in obs_other:
+        distance[itr] = eucledian_distance(obs_ego[:2], obs[:2])
+        itr = itr +1
+    if (all(i >= 0.1 for i in distance) == True):
+        f_collision = 0
+    else:
+        f_collision = -1
+
+    feature_vector = np.array([f_sameLane_ahead, f_sameLane_behind, f_laneAbove_ahead, f_laneAbove_behind, f_laneBelow_ahead, f_laneBelow_behind, f_velocity, f_heading, f_collision])
+    # normalized_feat = (feature_vector-np.min(feature_vector))/(np.max(feature_vector)-np.min(feature_vector))
     return feature_vector
-
-
-# # FOR EACH OBSERVATION
-# def feature_func(state):
-# # f_distance: Distance from the other vehicle  
-#     f_distance = (-1) * (eucledian_distance(state))
-
-#     # f_lane: Feature to penlize switching lanes
-#     v_pos = 0.04
-#     v_abs = abs(v_pos - state[0][1])
-#     if (v_abs > 0.01):
-#         f_lane = 1
-#     else:
-#         f_lane = 0
-    
-#     # f_maxS: Feature to reward higher speed 
-#     """
-#     v_max = 20
-#     f_maxS = (state[0][2] - v_max) ** 2
-#     """
-
-#     f_maxS = float(state[0][2])
-#     # f_heading to minimise the heading angle so that vehicle moves in stright line
-#     f_heading = float(state[0][4])
-
-#     # f_collision to penalise collision
-#     v_collision = eucledian_distance(state)
-#     f_collision = 0
-#     if v_collision < 0.01:
-#         f_collision = 1
-
-#     feature_vector = np.array([f_distance, f_lane, f_maxS, f_heading, f_collision])
-#     return feature_vector/max(abs(feature_vector))
 
 # THIS VERSION TAKES TRAJECTORIES
 def calc_feature_expectations(traj):
@@ -148,14 +142,12 @@ def irl(env, trajectories, feature_vector ,action_space, epochs, gamma, alpha):
   for traj in expert_traj_features:
     expert_demo_feat += traj
     
-  # expert_demo_feat = expert_demo_feat/len(expert_traj_features)
+  expert_demo_feat_n = expert_demo_feat/len(expert_traj_features)
+  print(np.around(expert_demo_feat_n, decimals=3))
 
   timestep = 0
   max_timestep = 10
 
-  model = DQN.load("highway_dqn/model")
-
-  feature_buffer = []
   single_trajectory_buffer = []
   trajectories_buffer =[]
   for state in start_states:
@@ -166,11 +158,17 @@ def irl(env, trajectories, feature_vector ,action_space, epochs, gamma, alpha):
         state_features = np.array(feature_func(state))
         single_trajectory_buffer.append((state, state_features))
 
-        action, _states = model.predict(state, deterministic=True)
+        best_action = 0
+        best_value = float('-inf')
+        for action in action_space:
+            obs, reward, done, info = env.step(action)
+            if reward > best_value:
+                best_value = reward
+                best_action = action
+                state = obs
+        #action, _states = model.predict(state, deterministic=True)
 
-        obs, reward, done, info = env.step(action)
-
-        state = obs
+        # obs, reward, done, info = env.step(action)
         timestep = timestep+1
     
     trajectories_buffer.append(single_trajectory_buffer)
@@ -201,9 +199,9 @@ def irl(env, trajectories, feature_vector ,action_space, epochs, gamma, alpha):
     ###################### GRADIENT DESCENT ###############################
     # loss = (expert_demo_feat**2) - (feature_exp**2) + (2 * 0.01 * theta)
     # theta = theta - (alpha*loss)
-    print("Epoch: ", i, " Weights: ", np.around(theta, decimals=2))
+    # print("Epoch: ", i, " Weights: ", np.around(theta, decimals=2))
 
-  return theta
+  return theta, expert_demo_feat_n
 
 
 
