@@ -1,0 +1,134 @@
+from unicodedata import decimal
+import numpy as np
+import gym
+# !pip3 install git+https://github.com/eleurent/rl-agents#egg=rl-agents
+from rl_agents.agents.dynamic_programming.value_iteration import ValueIterationAgent
+from rl_agents.trainer.evaluation import Evaluation
+import random
+import finite_mdp
+import utils
+import highway_dqn
+import highway_a2c
+import maxent_highway
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
+from stable_baselines3 import DQN
+
+
+GAMMA = 0.9
+
+class RewardWrapper(gym.RewardWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+    
+    def reward(self, rew):
+        observe = self.observation_type.observe()
+        ground_theta = [2.0, 0.0,  1.0, 0.0, 1.0, 0.03, 3.0, -3.0, 100.0]
+      #   ground_theta = [0.11, 0.0, 0.78, 0.0, 0.52, 0.0, 0.27, 0.0, 0.22]
+        feat = utils.feature_func(observe)
+        rew = np.dot(feat, ground_theta)
+        return rew
+
+def main():
+   discount = GAMMA
+   epochs = 200
+   learning_rate = 0.01
+   num_features = 9
+   n_traj = 100
+   trajectories = []
+   env = RewardWrapper(gym.make("highway-v0"))
+   # env = gym.make("highway-v0")
+
+   np.random.seed(50)
+   env.seed(50)
+   action_space = {
+        0: 'LANE_LEFT',
+        1: 'IDLE',
+        2: 'LANE_RIGHT',
+        3: 'FASTER',
+        4: 'SLOWER'
+    }
+
+   config = {
+        "observation": {
+            "type": "Kinematics",
+            "vehicles_count": 5,
+            "features": [ "x", "y", "vx", "vy", "heading" ],
+            },
+        "absolute": False,
+        "lanes_count": 3,
+        "show_trajectories": True,
+        "manual_control": False,
+        "real_time_rendering": False,
+        "vehicles_count": 5,
+        "screen_height": 150,
+        "screen_width": 600,
+        "order": sorted,
+    }
+   env.configure(config)
+   obs = env.reset() 
+
+######################### TESTING MODEL######################################
+
+   model = DQN.load("highway_dqn/groundtruth")
+   obs1 = model.policy.obs_to_tensor(obs)
+
+   traj = utils.load_trajectories("test_data/final_test.pickle")
+   traj = np.around(np.array(traj), decimals = 2)
+   print(traj)
+
+
+######################### VI AGENT ######################################
+   env1 = env.to_finite_mdp()
+   trans = env1.transition
+#    print(env.config)
+   agent = ValueIterationAgent(env)
+   evaluation = Evaluation(env1, agent)
+   evaluation.train()
+
+#    t_ground = utils.load_trajectories("groundtruth.pickle")
+#    traj = t_ground[0][0][0]
+   action = model.predict(obs)
+#    print(q_value)
+   
+   # trans_prob = env.P[obs][action] 
+   # print(trans_prob)
+   
+#    q_net = model.policy.make_q_net()
+#    actionp = q_net(obs1)
+#    actionf = model.policy.forward(obs1)
+#    a = actionp.argmax(dim=1).reshape(-1)
+#    action, _states = model.predict(obs1)
+
+#    obs, reward, done, info = env.step(int(action))
+#    obs2 = model.policy.obs_to_tensor(obs)[0]
+#    actionp = q_net(obs2)
+#    action, _states = model.predict(obs)  
+
+#    obs, reward, done, info = env.step(int(action))
+#    obs3 = model.policy.obs_to_tensor(obs)[0]
+#    actionp = q_net(obs3)
+#    a = actionp.argmax(dim=1).reshape(-1)
+#    action, _states = model.predict(obs)  
+#    print(2) 
+
+
+
+# #    x = policy.forward(np.array(obs))
+# #    q_value = model.predict(obs)
+#    obs1 = model.policy.obs_to_tensor(obs)[0]
+#    action_p = policy.forward(obs1)
+#    test = action_p.numpy()
+#    print(action_p.argmax(dim=1).reshape(-1))
+######################### TRAINING DQN ######################################
+
+
+#    highway_dqn.train_new_dqn(env, model_file= "highway_dqn/groundtruth1")
+#    print("DQN Trained")
+
+#    print("Testing DQN")
+#    highway_dqn.test_model(env, filename = "highway_dqn/groundtruth", max_timesteps= 30)
+#    print("DQN Tested")
+
+if __name__ == "__main__":
+    main()

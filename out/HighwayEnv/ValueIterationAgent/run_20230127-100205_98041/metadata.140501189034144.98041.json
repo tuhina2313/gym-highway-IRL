@@ -1,0 +1,41 @@
+{
+    "agent": {
+        "__class__": "<class 'rl_agents.agents.dynamic_programming.value_iteration.ValueIterationAgent'>",
+        "gamma": 1.0,
+        "iterations": 100
+    },
+    "env": {
+        "__class__": "<class '__main__.RewardWrapper'>",
+        "absolute": false,
+        "action": {
+            "type": "DiscreteMetaAction"
+        },
+        "centering_position": [
+            0.3,
+            0.5
+        ],
+        "collision_reward": -1,
+        "controlled_vehicles": 1,
+        "duration": 40,
+        "ego_spacing": 2,
+        "high_speed_reward": 0.4,
+        "id": "highway-v0",
+        "import_module": null,
+        "initial_lane_id": null,
+        "lane_change_reward": 0,
+        "lanes_count": 3,
+        "manual_control": false,
+        "observation": {
+            "features": [
+                "x",
+                "y",
+                "vx",
+                "vy",
+                "heading"
+            ],
+            "type": "Kinematics",
+            "vehicles_count": 5
+        },
+        "offroad_terminal": false,
+        "offscreen_rendering": false,
+        "order": 

@@ -6,13 +6,13 @@ import pickle
 # from highway_wrapper import ObservationWrapper, RewardWrapper
 import numpy as np
 import pygame
-import highway_dqn
 # from trajectory import Trajectory
 # import maxent
-from copy import copy
+# import deep_irl
+
 import matplotlib.pyplot as plt
 
-from maxent_highway import N_LANE
+# from maxent_highway import N_LANE
 
 N_LANE = 3
 
@@ -21,6 +21,11 @@ fpsClock = pygame.time.Clock()
 display = pygame.display.set_mode((150, 600))
 
 def eucledian_distance(pair):
+    v1 = pair[0][0]
+    v2 = pair[0][1]
+    return ((v1[0] - v2[0]) ** 2 + (v1[1] - v2[1]) ** 2)
+
+def eucledian_distance2(pair):
     v1 = pair[0][0]
     v2 = pair[0][1]
     return ((v1[0] - v2[0]) ** 2 + (v1[1] - v2[1]) ** 2)
@@ -136,17 +141,6 @@ def feature_func(state):
     v_max = 0.4
     f_velocity = obs_ego[2]
 
-        # Distance vector to keep track of collision
-    distance = np.zeros(len(obs_other))
-    itr = 0
-    for obs in obs_other:
-        distance[itr] = eucledian_distance2(obs_ego[:2], obs[:2])
-        itr = itr +1
-    if (all(i >= 0.1 for i in distance) == True):
-        f_collision = 0
-    else:
-        f_collision = -1
-
     feature_vector = np.array([f_sameLane_ahead, f_sameLane_behind, f_laneAbove_ahead, f_laneAbove_behind, f_laneBelow_ahead, f_laneBelow_behind, f_velocity, f_heading, f_collision])
     # normalized_feat = (feature_vector-np.min(feature_vector))/(np.max(feature_vector)-np.min(feature_vector))
     return feature_vector
@@ -180,21 +174,17 @@ def record_trajectories(env, max_timesteps):
         action = 1
         env.render()
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_RIGHT]:
-            action = 3
-        if(keys[pygame.K_LEFT]):
-            action = 4
         if(keys[pygame.K_DOWN]):
-            action = 2
-        if(keys[pygame.K_UP]):
             action = 0
-        obs, reward, terminated, info = env.step(action)
+        if(keys[pygame.K_UP]):
+            action = 2
+        obs, reward, _, _ = env.step(action)
         observation_tuple = []
         observation_tuple.append(obs[0].tolist())
         observation_tuple.append(obs[1].tolist())
         feature_matrix = []
-        trajectory.append((np.around(obs, decimals=2), action))
-        # trajectory.append((observation_tuple, action))
+        # trajectory.append((np.around(obs, decimals=2), action))
+        trajectory.append((obs, action))
         timeStep += 1
     observation_tuple.append(obs[0].tolist())
     observation_tuple.append(obs[1].tolist())
@@ -265,32 +255,4 @@ def get_reward_plot(reward):
     plt.legend(loc='best')
     plt.show()
 
-def get_action_dict():
-    acc_slices = np.linspace(-5, 5, 10)
-    steer_slices = np.linspace(-0.7853981633974483, 0.7853981633974483, 10)
-    action_dict = {}
-    for i in range(10):
-        action_dict[i] = (acc_slices[i], steer_slices[i])
-    return action_dict
-
-def reward_bar_graphs(result):
-    fig, ax = plt.subplots(figsize=(10,5))
-    x = np.arange(len(result))
-    width = 0.4
-    plt.bar(x-0.2, result[:][0],
-            width, color='tab:red', label='A1')
-    plt.bar(x-0.1, result[:][1],
-            width, color='blue', label='A2')
-    plt.bar(x+0.1, result[:][2],
-            width, color='green', label='A3')
-    plt.bar(x+0.2, result[:][3],
-            width, color='yellow', label='A4')
-    plt.title('State probabilities', fontsize=25)
-    plt.xlabel(None)
-    plt.ylabel('State Reward', fontsize=20)
-    plt.yticks(fontsize=17)
-    ax.grid(False)
-    ax.tick_params(bottom=False, left=True)
-    plt.legend(frameon=False, fontsize=15)
-    plt.show()
 
