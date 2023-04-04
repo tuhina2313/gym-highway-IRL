@@ -6,11 +6,15 @@ import pickle
 # from highway_wrapper import ObservationWrapper, RewardWrapper
 import numpy as np
 import pygame
+from sympy import false
 import highway_dqn
 # from trajectory import Trajectory
 # import maxent
 from copy import copy
 import matplotlib.pyplot as plt
+from pathlib import Path
+import base64
+import collections
 
 from maxent_highway import N_LANE
 
@@ -20,6 +24,41 @@ pygame.init()
 fpsClock = pygame.time.Clock()
 display = pygame.display.set_mode((150, 600))
 
+
+def video_utility(path):
+    display = Display(visible=0, size=(1400, 900))
+    display.start()
+    html = []
+    for mp4 in Path(path).glob("*.mp4"):
+        video_b64 = base64.b64encode(mp4.read_bytes())
+        html.append('''<video alt="{}" autoplay 
+                      loop controls style="height: 400px;">
+                      <source src="data:video/mp4;base64,{}" type="video/mp4" />
+                 </video>'''.format(mp4, video_b64.decode('ascii')))
+    ipythondisplay.display(ipythondisplay.HTML(data="<br>".join(html)))
+
+def show_video():
+    env = gym.make("highway-v0")
+    env = Monitor(env, './video', force=True, video_callable=lambda episode: True)
+    obs, done = env.reset(), False
+    while not done:
+        action = env.action_space.sample()
+        obs, reward, done, info = env.step(action.numpy())
+    env.close()
+    show_video('./video')
+
+def record_video():
+    env = gym.make("highway-v0")
+    action = env.action_space.sample()
+    done = false
+  
+    vid = gym.wrappers.RecordVideo(env,'video.mp4')
+    env.reset()
+    while not done:
+        _, _, done, _ = env.step(action)
+    env.close()
+    env.reset()
+
 def eucledian_distance(pair):
     v1 = pair[0][0]
     v2 = pair[0][1]
@@ -28,6 +67,17 @@ def eucledian_distance(pair):
 def eucledian_distance2(p1, p2):
     dist = ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
     return dist
+
+def get_sorted_frequency(R):
+    frequency = collections.Counter(R)
+    myKeys = list(frequency.keys())
+    myKeys.sort()
+    sorted_freq = {i: frequency[i] for i in myKeys}
+
+
+    x = list(sorted_freq.keys()) 
+    y = list(sorted_freq.values())
+    return x, y
 
 def generate_trajectories(env, n_traj):
     trajectories = []
@@ -129,7 +179,8 @@ def feature_func(state):
         f_laneAbove_behind = abs(laneAbove_behind[0]) if laneAbove_behind.size != 0 else 0.0
     # f_heading: Feature to penlize switching lanes (so that vehicle moves in stright line)
     # A boolean indicating swtiching lanes
-    if obs_ego[4] != 0:
+    # Relaxing the heading penalty to incorporate noise wihout lane change
+    if (obs_ego[4] != 0):
         f_heading = 1
 
     # f_velocity: Feature to reward higher speed 
@@ -248,7 +299,8 @@ def load_trajectories(filename):
 
 def get_reward_plot(reward):
     
-    x = np.arange(0, 12, 1, dtype=int)
+    x_cols = len(reward[0]) - 1
+    x = np.arange(0, x_cols, 1, dtype=int)
 
     label1 = "Trajectory Reward: "+ str(np.around(np.sum(reward[0]),decimals=2))
     label2 = "Trajectory Reward: "+ str(np.around(np.sum(reward[1]),decimals=2))

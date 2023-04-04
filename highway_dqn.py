@@ -41,6 +41,7 @@ def test_model(env, filename, max_timesteps):
     model = DQN.load(filename)
     while True:
         done = False
+        env.seed(50)
         obs = env.reset()
         timeStep = 0
         while timeStep <= max_timesteps:
@@ -50,6 +51,7 @@ def test_model(env, filename, max_timesteps):
             env.render()
             timeStep = timeStep +1 
 
+##### Does not work because we're modifying policy here ###### 
 def get_stochastic_transition(env, obs, action_dict, delta):
     filename = "highway_dqn/groundtruth_continuous"
     model = DQN.load(filename)
@@ -132,18 +134,37 @@ def get_action_probabilities(env, filename, max_timesteps):
 def modify_action(action, action_dict):
     naction = action_dict[action]
 
+def trajectory_rewards(env, model_file, n_episodes):
+    model = DQN.load(model_file)
+    max_timesteps = 30
+    reward_all = []
+    for i in range(n_episodes):
+        timeStep = 0
+        reward_traj = 0
+        obs = env.reset()
+        while timeStep <= max_timesteps:
+            action, _states = model.predict(obs, deterministic=True)
+            obs, reward, done, info = env.step(int(action))
+            # trajectory.append((obs, action))
+            reward_traj += reward
+            timeStep += 1
+        reward_all.append(reward_traj)
+        print("Iteration: ", i, "   ", "Reward: ", reward_traj)
+    return reward_all   
 
 def record_trajectories(env, model_file, max_timesteps):
     model = DQN.load(model_file)
 
     timeStep = 0
     trajectory = []
+    reward_traj = []
     obs = env.reset()
     while timeStep <= max_timesteps:
         action, _states = model.predict(obs, deterministic=True)
         obs, reward, done, info = env.step(int(action))
         trajectory.append((obs, action))
+        reward_traj.append(reward)
         timeStep += 1
         # env.render()
     trajectory.append((obs, None))
-    return np.array(trajectory)
+    return np.array(trajectory), np.array(reward_traj)
